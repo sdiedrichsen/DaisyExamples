@@ -20,6 +20,9 @@ int main(void)
     hardware.Init();
 
     // Loop forever
+
+    int waitTimes[9] = {100,100,100,500,500,500,100,100,100};
+    int idx = 0;
     for(;;)
     {
         // Set the onboard LED
@@ -29,6 +32,8 @@ int main(void)
         led_state = !led_state;
 
         // Wait 500ms
-        System::Delay(500);
+        System::Delay(waitTimes[idx++]);
+        idx %= 9; 
+        
     }
 }
