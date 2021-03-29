@@ -1,7 +1,8 @@
 #include "daisy_patch.h"
 #include "daisysp.h"
 
-#include <math.h>
+#include "Bandpass.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846f /* pi */
 #endif
@@ -128,46 +129,6 @@ static float allpassTimes[numDelays]  // ms
 };
 float allpassFrames[numDelays];
 
-struct Bandpass
-{
-	float _lpHist;
-	float _hpHist;
-	float _d0LP;
-	float _d0HP;
-	float _gainHS;
-
-	void Init()
-	{
-	  _lpHist = 0.f;
-	  _hpHist = 0.f;
-	  _d0LP = 0.f;
-	  _d0HP = 0.f;
-		_gainHS = 0.f;
-	};
-	float Process(const float in)
-	{
-		float hp = in -	_lpHist;
-    float out	=	(_lpHist += _d0LP * hp);
-		out += _gainHS * in;
-    _hpHist  += _d0HP * (out -=	_hpHist);	
-		return out;			
-	}
-
-	void SetHighCut(float normFreq, float gainHighShelf)
-	{
-    float	arg	=	float(M_PI * normFreq);			
-    float	l		=	float(cosf(arg) / sinf(arg));
-    _d0LP		  =	1.f / (1.f + l);   
-		_gainHS   =  gainHighShelf;         
-	}
-
-	void SetLowCut(float normFreq)
-	{
-    float	arg	=	float(M_PI * normFreq);			
-    float	l		=	float(cosf(arg) / sinf(arg));
-    _d0HP		  =	1.f / (1.f + l);              
-	}
-};
 
 
 Bandpass  DSY_SDRAM_BSS bandPass[numDelays];
