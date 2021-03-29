@@ -1,16 +1,23 @@
 #include "daisy_patch.h"
 #include "daisysp.h"
 
+#include <math.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846f /* pi */
+#endif
+
+
 using namespace daisy;
 using namespace daisysp;
 
 DaisyPatch hw;
 
-#define MAX_DELAY static_cast<size_t>(48000 * 1.f)
+#define MAX_DELAY static_cast<size_t>(24000 * 1.f)
 static const int numDelays = 8;
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS delayLine[numDelays];
+DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS allpass  [numDelays];
 
-static float allFDNMatrices[9][numDelays][numDelays] = 
+static float DSY_SDRAM_DATA allFDNMatrices[9][numDelays][numDelays] = 
 {
  {{0.f,    1.f,    0.f,    0.f,    0.f,    0.f,    0.f,    0.f},
 	{0.f,    0.f,    1.f,    0.f,    0.f,    0.f,    0.f,    0.f},
@@ -94,7 +101,7 @@ static float allFDNMatrices[9][numDelays][numDelays] =
   {-0.197008089298341,  -0.049248999439014,  -0.349053521580636,  -0.616632558782249,  0.153451689901756,  0.362734998551988,  -0.055389841986459,  -0.546348003037977}},
 }; 
 
-static float fdnMatrix[numDelays][numDelays];
+static float DSY_SDRAM_BSS fdnMatrix[numDelays][numDelays];
 
 static float delayTimes[numDelays]  // ms
 {
@@ -107,6 +114,59 @@ static float delayTimes[numDelays]  // ms
 	 73.f,
 	 47.f,
 };
+
+static float allpassTimes[numDelays]  // ms
+{
+	  5.2f,
+	 17.3f,
+	 11.4f,
+	 14.5f,
+	 50.6f,
+	 30.7f,
+	 23.8f,
+	 13.9f,
+};
+float allpassFrames[numDelays];
+
+struct Bandpass
+{
+	float _lpHist;
+	float _hpHist;
+	float _d0LP;
+	float _d0HP;
+
+	void Init()
+	{
+	  _lpHist = 0.f;
+	  _hpHist = 0.f;
+	  _d0LP = 0.f;
+	  _d0HP = 0.f;
+	};
+	float Process(const float in)
+	{
+    float out	=	(_lpHist += _d0LP*(in -	_lpHist));
+    _hpHist  += _d0HP * (out -=	_hpHist);	
+		return out;			
+	}
+
+	void SetHighCut(float normFreq)
+	{
+    float	arg	=	float(M_PI * normFreq);			
+    float	l		=	float(cosf(arg) / sinf(arg));
+    _d0LP		  =	1.f / (1.f + l);             
+	}
+
+	void SetLowCut(float normFreq)
+	{
+    float	arg	=	float(M_PI * normFreq);			
+    float	l		=	float(cosf(arg) / sinf(arg));
+    _d0HP		  =	1.f / (1.f + l);              
+	}
+};
+
+
+Bandpass  DSY_SDRAM_BSS bandPass[numDelays];
+
 
 
 void AudioCallback(float **in, float **out, size_t size)
@@ -122,7 +182,7 @@ void AudioCallback(float **in, float **out, size_t size)
 		float delayOut[numDelays];
 		float delayIn [numDelays];
 
-		float feedback = 0.99f;
+		float feedback = 0.9f;
 		for(int o = 0; o < numDelays; ++o)
 			delayOut[o] = delayLine[o].Read() * feedback;
 		
@@ -140,8 +200,13 @@ void AudioCallback(float **in, float **out, size_t size)
 		delayIn[0] += input;
 		delayIn[4] += input;
 
+		const float apg = 0.4;
+
 		for(int o = 0; o < numDelays; ++o)
+		{	
+			delayIn[o] = allpass[i].Allpass(delayIn[o], allpassFrames[o], apg);
 			delayLine[o].Write(delayIn[o]);
+		}
 
 		out[0][i] = input + 0.2 * (		delayOut[0] 
 																+ delayOut[2]
@@ -173,6 +238,8 @@ void InitDelayNetwork()
 		delayLine[i].Init();
 		delayLine[i].SetDelay(sampleRate * 1e-3f * delayTimes[i]);
 
+		allpass[i].Init();
+		allpassFrames[i] = allpassTimes[i] * 1e-3f * sampleRate;
 	}
 }
 
