@@ -2,7 +2,7 @@
 TARGET = FDN
 
 # Sources
-CPP_SOURCES = FDN.cpp Bandpass.cpp
+CPP_SOURCES = FDN.cpp Bandpass.cpp Controller.cpp
 
 # Library Locations
 LIBDAISY_DIR = ../../libdaisy
