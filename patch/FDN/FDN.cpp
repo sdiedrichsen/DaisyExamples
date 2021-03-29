@@ -105,14 +105,14 @@ static float DSY_SDRAM_BSS fdnMatrix[numDelays][numDelays];
 
 static float delayTimes[numDelays]  // ms
 {
-	 11.f,
-	 17.f,
-	 23.f,
-	147.f,
-	 50.f,
-	111.f,
-	 73.f,
-	 47.f,
+	 19.f,   // L  
+	 17.f,   // 	R
+	 23.f,   // L 
+	 50.f,   //   R 
+	147.f,   // L
+	111.f,   //   R
+	 73.f,   // L 
+	 47.f,   // 	R
 };
 
 static float allpassTimes[numDelays]  // ms
