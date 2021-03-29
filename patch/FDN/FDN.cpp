@@ -204,7 +204,8 @@ void AudioCallback(float **in, float **out, size_t size)
 
 		for(int o = 0; o < numDelays; ++o)
 		{	
-			delayIn[o] = allpass[i].Allpass(delayIn[o], allpassFrames[o], apg);
+			delayIn[o] = bandPass[o].Process(delayIn[o]);
+			delayIn[o] = allpass[o].Allpass(delayIn[o], allpassFrames[o], apg);
 			delayLine[o].Write(delayIn[o]);
 		}
 
@@ -240,6 +241,11 @@ void InitDelayNetwork()
 
 		allpass[i].Init();
 		allpassFrames[i] = allpassTimes[i] * 1e-3f * sampleRate;
+
+		bandPass[i].Init();
+		bandPass[i].SetHighCut(4e3f * sampleRate);
+		bandPass[i].SetLowCut(100.f * sampleRate);
+
 	}
 }
 
