@@ -17,7 +17,7 @@ static const int numDelays = 8;
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS delayLine[numDelays];
 DelayLine<float, MAX_DELAY> DSY_SDRAM_BSS allpass  [numDelays];
 
-static float DSY_SDRAM_DATA allFDNMatrices[9][numDelays][numDelays] = 
+static float allFDNMatrices[9][numDelays][numDelays] = 
 {
  {{0.f,    1.f,    0.f,    0.f,    0.f,    0.f,    0.f,    0.f},
 	{0.f,    0.f,    1.f,    0.f,    0.f,    0.f,    0.f,    0.f},
@@ -134,6 +134,7 @@ struct Bandpass
 	float _hpHist;
 	float _d0LP;
 	float _d0HP;
+	float _gainHS;
 
 	void Init()
 	{
@@ -141,19 +142,23 @@ struct Bandpass
 	  _hpHist = 0.f;
 	  _d0LP = 0.f;
 	  _d0HP = 0.f;
+		_gainHS = 0.f;
 	};
 	float Process(const float in)
 	{
-    float out	=	(_lpHist += _d0LP*(in -	_lpHist));
+		float hp = in -	_lpHist;
+    float out	=	(_lpHist += _d0LP * hp);
+		out += _gainHS * in;
     _hpHist  += _d0HP * (out -=	_hpHist);	
 		return out;			
 	}
 
-	void SetHighCut(float normFreq)
+	void SetHighCut(float normFreq, float gainHighShelf)
 	{
     float	arg	=	float(M_PI * normFreq);			
     float	l		=	float(cosf(arg) / sinf(arg));
-    _d0LP		  =	1.f / (1.f + l);             
+    _d0LP		  =	1.f / (1.f + l);   
+		_gainHS   =  gainHighShelf;         
 	}
 
 	void SetLowCut(float normFreq)
@@ -182,7 +187,7 @@ void AudioCallback(float **in, float **out, size_t size)
 		float delayOut[numDelays];
 		float delayIn [numDelays];
 
-		float feedback = 0.9f;
+		float feedback = 0.95f;
 		for(int o = 0; o < numDelays; ++o)
 			delayOut[o] = delayLine[o].Read() * feedback;
 		
@@ -222,17 +227,24 @@ void AudioCallback(float **in, float **out, size_t size)
 
 void UpdateDisplay()
 {
-   hw.display.Fill(false);
+  hw.display.Fill(false);
 
-    hw.display.SetCursor(0, 0);
-    std::string str  = "FD Network";
-    char *      cstr = &str[0];
-    hw.display.WriteString(cstr, Font_7x10, true);
-    hw.display.Update();
+	hw.display.SetCursor(0, 0);
+	std::string str  = "FD Network";
+	char *      cstr = &str[0];
+	hw.display.WriteString(cstr, Font_7x10, true);
+	hw.display.Update();
 }
 
 void InitDelayNetwork()
 {
+
+	for(int j = 0; j < numDelays; ++j)
+	{
+		for(int k = 0; k < numDelays; ++k)
+			fdnMatrix[j][k] = allFDNMatrices[2][j][k];
+	}
+
 	float sampleRate = hw.AudioSampleRate();
 	for(int i = 0; i < numDelays; ++i)
 	{
@@ -243,8 +255,8 @@ void InitDelayNetwork()
 		allpassFrames[i] = allpassTimes[i] * 1e-3f * sampleRate;
 
 		bandPass[i].Init();
-		bandPass[i].SetHighCut(4e3f * sampleRate);
-		bandPass[i].SetLowCut(100.f * sampleRate);
+		bandPass[i].SetHighCut(12e3f / sampleRate, -0.0f);
+		bandPass[i].SetLowCut(20.f / sampleRate);
 
 	}
 }
@@ -252,12 +264,6 @@ void InitDelayNetwork()
 
 int main(void)
 {
-	for(int j = 0; j < numDelays; ++j)
-	{
-		for(int k = 0; k < numDelays; ++k)
-			fdnMatrix[j][k] = allFDNMatrices[1][j][k];
-	}
-
 	hw.Init();
 
 	// initialize delays
