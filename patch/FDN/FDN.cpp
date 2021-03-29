@@ -193,13 +193,15 @@ void AudioCallback(float **in, float **out, size_t size)
 		
 	
 
-		for(int i = 0; i < numDelays; ++i)
+		for(int k = 0; k < numDelays; ++k)
 		{		
-			delayIn[i] = 0.f;
+			float delayInput = 0.0f;
+			float* fdnMatrixR = fdnMatrix[k]; 
 			for(int o = 0; o < numDelays; ++o)
 			{
-				delayIn[i] += fdnMatrix[o][i] * delayOut[o];
+				delayInput += fdnMatrixR[o] * delayOut[o];
 			}
+			delayIn[k] = delayInput;
 		}
 
 		delayIn[0] += input;
@@ -209,9 +211,10 @@ void AudioCallback(float **in, float **out, size_t size)
 
 		for(int o = 0; o < numDelays; ++o)
 		{	
-			delayIn[o] = bandPass[o].Process(delayIn[o]);
-			delayIn[o] = allpass[o].Allpass(delayIn[o], allpassFrames[o], apg);
-			delayLine[o].Write(delayIn[o]);
+			float x = delayIn[o];
+			x = bandPass[o].Process(x);
+			x = allpass[o].Allpass(x, allpassFrames[o], apg);
+			delayLine[o].Write(x);
 		}
 
 		out[0][i] = input + 0.2 * (		delayOut[0] 
