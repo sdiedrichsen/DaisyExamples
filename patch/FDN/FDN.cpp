@@ -2,6 +2,7 @@
 #include "daisysp.h"
 
 #include "Bandpass.h"
+#include "Controller.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846f /* pi */
@@ -133,11 +134,40 @@ float allpassFrames[numDelays];
 
 Bandpass  DSY_SDRAM_BSS bandPass[numDelays];
 
+enum eCtrsl
+{
+	eMix,
+	eTime,
+	eDiffusion,
+	eHiCut, 
+	eLoCut,
+	eSize,
+	eNumControls
+};
 
+
+Controller DSY_SDRAM_BSS ctrl[eNumControls];
+Controller DSY_SDRAM_BSS MenuCtrl;
+
+char menuState = 0; // 0: selection 1: valuew
 
 void AudioCallback(float **in, float **out, size_t size)
 {
-	hw.ProcessAllControls();
+	hw.ProcessDigitalControls();
+	if(hw.encoder.RisingEdge() == true)
+	{
+		menuState = 1 - menuState; // toggle
+	}
+	int i = hw.encoder.Increment();
+	int menuIdx = MenuCtrl.Value();
+
+	if(menuState == 0)
+		MenuCtrl.ChangeValue(i);
+	
+	else
+		ctrl[menuIdx].ChangeValue(i);
+
+
 	for (size_t i = 0; i < size; i++)
 	{
 	 	out[2][i] = 0.f;
@@ -197,7 +227,20 @@ void UpdateDisplay()
 	std::string str  = "FD Network";
 	char *      cstr = &str[0];
 	hw.display.WriteString(cstr, Font_7x10, true);
+	
+	int menuIdx = MenuCtrl.Value();
+
+	hw.display.SetCursor(0, 20);
+	hw.display.WriteString(ctrl[menuIdx].Name(), Font_7x10, true);
+
+	int value = ctrl[menuIdx].Value();
+  str = std::to_string(value);
+	hw.display.SetCursor(60, 20);
+	hw.display.WriteString(cstr, Font_7x10, true);
+
 	hw.display.Update();
+
+
 }
 
 void InitDelayNetwork()
@@ -233,6 +276,22 @@ int main(void)
 	// initialize delays
 
 	InitDelayNetwork();
+
+
+	// initialize controller
+
+	
+	ctrl[eMix				].Init("Mix", 			0.f, 100.f, 100, eLinear, 		  50.f);
+	ctrl[eTime			].Init("Time", 			0.9,   1.f, 200, eLinear, 			0.95f);
+	ctrl[eDiffusion	].Init("Diffusion", 0.f,   1.0, 100, eLinear, 			0.5f);
+	ctrl[eHiCut			].Init("High Cut", 1e3f,  2e4f, 100, eLogarithmic,  12e3f);
+	ctrl[eLoCut			].Init("Low Cut",  10.f,  1e3f, 100, eLogarithmic,  20.f);
+	ctrl[eSize			].Init("Size", 		 50.f, 200.f, 100, eLogarithmic,  100.f);
+	MenuCtrl.Init("Selection", 0.f, eNumControls -1, eNumControls, eLinear, 0.f);
+
+
+
+
 
 
 	hw.StartAdc();
