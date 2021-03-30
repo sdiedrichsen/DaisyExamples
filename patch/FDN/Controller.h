@@ -34,8 +34,7 @@ struct Controller
   void Increment(int steps = 1);
   void Decrement(int steps = 1);
   float Value   ();
-
-  private:
   void ChangeValue(int steps);
+  const char* Name(); 
 
 };

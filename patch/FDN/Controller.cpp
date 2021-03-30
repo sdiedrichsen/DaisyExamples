@@ -46,7 +46,6 @@ Controller::ChangeValue(int steps)
     _pos = (_pos <  0)?     0 : _pos;
 
     _value = _min + (_max - _min) * float(_pos) /float(_steps);
-
   }
 
 }
@@ -56,4 +55,10 @@ float
 Controller::Value()
 {
   return _value;
+}
+
+const char* 
+Controller::Name()
+{
+  return _pName;
 }
