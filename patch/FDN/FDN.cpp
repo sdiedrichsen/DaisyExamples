@@ -3,6 +3,7 @@
 
 #include "Bandpass.h"
 #include "Controller.h"
+#include <string>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846f /* pi */
@@ -178,7 +179,7 @@ void AudioCallback(float **in, float **out, size_t size)
 		float delayOut[numDelays];
 		float delayIn [numDelays];
 
-		float feedback = 0.95f;
+		float feedback = ctrl[eTime].Value();
 		for(int o = 0; o < numDelays; ++o)
 			delayOut[o] = delayLine[o].Read() * feedback;
 		
@@ -198,7 +199,7 @@ void AudioCallback(float **in, float **out, size_t size)
 		delayIn[0] += input;
 		delayIn[4] += input;
 
-		const float apg = 0.4;
+		const float apg = ctrl[eDiffusion].Value();
 
 		for(int o = 0; o < numDelays; ++o)
 		{	
@@ -208,11 +209,12 @@ void AudioCallback(float **in, float **out, size_t size)
 			delayLine[o].Write(x);
 		}
 
-		out[0][i] = input + 0.2 * (		delayOut[0] 
+		float wet = ctrl[eMix].Value() * 2e-3f;
+		out[0][i] = input + wet * (		delayOut[0] 
 																+ delayOut[2]
 																+ delayOut[4]
 																+ delayOut[6]);
-		out[1][i] = input + 0.2 * (		delayOut[1] 
+		out[1][i] = input + wet * (		delayOut[1] 
 																+ delayOut[3]
 																+ delayOut[5]
 																+ delayOut[7]);
@@ -221,26 +223,35 @@ void AudioCallback(float **in, float **out, size_t size)
 
 void UpdateDisplay()
 {
+	int menuIdx = MenuCtrl.Value();
+
+	bool valueChanged = MenuCtrl.ValueHasChanged();
+	valueChanged |= ctrl[menuIdx].ValueHasChanged();
+
+	if(!valueChanged)
+		return;
+
   hw.display.Fill(false);
 
 	hw.display.SetCursor(0, 0);
-	std::string str  = "FD Network";
-	char *      cstr = &str[0];
+	const char*   cstr = "FD Network";
 	hw.display.WriteString(cstr, Font_7x10, true);
-	
-	int menuIdx = MenuCtrl.Value();
 
-	hw.display.SetCursor(0, 20);
+	if(menuState == 0)
+		hw.display.SetCursor(0, 20);
+	else
+		hw.display.SetCursor(0, 35);
+	hw.display.WriteString(">", Font_7x10, true);
+	
+	hw.display.SetCursor(10, 20);
 	hw.display.WriteString(ctrl[menuIdx].Name(), Font_7x10, true);
 
-	int value = ctrl[menuIdx].Value();
-  str = std::to_string(value);
-	hw.display.SetCursor(60, 20);
-	hw.display.WriteString(cstr, Font_7x10, true);
+	hw.display.SetCursor(10, 35);
+	std::string valueStr = "123456789ABCDEF";
+	const char* str = ctrl[menuIdx].ValueString(valueStr);
+	hw.display.WriteString(str, Font_7x10, true);
 
 	hw.display.Update();
-
-
 }
 
 void InitDelayNetwork()
@@ -268,6 +279,30 @@ void InitDelayNetwork()
 	}
 }
 
+void SetHighCut(float freq)
+{
+	float sampleRate = hw.AudioSampleRate();
+	float normFreq = freq / sampleRate;
+	for(int i = 0; i < numDelays; ++i)
+		bandPass[i].SetHighCut(normFreq, -0.0f);
+}
+
+void SetLowCut(float freq)
+{
+	float sampleRate = hw.AudioSampleRate();
+	float normFreq = freq / sampleRate;
+	for(int i = 0; i < numDelays; ++i)
+		bandPass[i].SetLowCut(normFreq);
+}
+
+void SetSize(float size)
+{
+	float sampleRate = hw.AudioSampleRate();
+	size *= sampleRate * 1e-5f;  // [ms] * [%]
+	for(int i = 0; i < numDelays; ++i)
+		delayLine[i].SetDelay(size * delayTimes[i]);
+}
+
 
 int main(void)
 {
@@ -281,18 +316,17 @@ int main(void)
 	// initialize controller
 
 	
-	ctrl[eMix				].Init("Mix", 			0.f, 100.f, 100, eLinear, 		  50.f);
-	ctrl[eTime			].Init("Time", 			0.9,   1.f, 200, eLinear, 			0.95f);
-	ctrl[eDiffusion	].Init("Diffusion", 0.f,   1.0, 100, eLinear, 			0.5f);
-	ctrl[eHiCut			].Init("High Cut", 1e3f,  2e4f, 100, eLogarithmic,  12e3f);
-	ctrl[eLoCut			].Init("Low Cut",  10.f,  1e3f, 100, eLogarithmic,  20.f);
-	ctrl[eSize			].Init("Size", 		 50.f, 200.f, 100, eLogarithmic,  100.f);
-	MenuCtrl.Init("Selection", 0.f, eNumControls -1, eNumControls, eLinear, 0.f);
+	ctrl[eMix				].Init("Mix", 		 "%", 0.f,  100.f, 100, eLinear, 		    50.f, 0);
+	ctrl[eTime			].Init("Time", 		 "?", 0.7,    1.f, 200, eLinear, 			  0.9f, 3);
+	ctrl[eDiffusion	].Init("Diffusion","",  0.f,    1.0, 100, eLinear, 			  0.5f, 2);
+	ctrl[eHiCut			].Init("High Cut", "Hz",1e3f,  2e4f, 100, eLogarithmic,  12e3f, 0);
+	ctrl[eLoCut			].Init("Low Cut",  "Hz",10.f,  1e3f, 100, eLogarithmic,   20.f, 1);
+	ctrl[eSize			].Init("Size", 		 "%", 50.f, 200.f, 100, eLogarithmic,  100.f, 1);
+	MenuCtrl.Init					("Selection", "",  0.f, eNumControls -1, eNumControls, eLinear,  0.f, 0);
 
-
-
-
-
+	ctrl[eHiCut].SetUpdateCallback(SetHighCut);
+	ctrl[eLoCut].SetUpdateCallback(SetLowCut);
+  ctrl[eSize ].SetUpdateCallback(SetSize);
 
 	hw.StartAdc();
 	hw.StartAudio(AudioCallback);
