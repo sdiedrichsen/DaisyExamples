@@ -120,15 +120,18 @@ static float  __attribute__((section(".dtcmram_bss"))) fdnMatrix[numDelays][numD
 
 static float delayTimes[numDelays]  // ms
 {
-	 16.5f,   					// L  
-	 					17.f,   // 	R
+	 16.5f,   				// L  
+	 					17.f,   // 	 R
 	 53.f,   					// L 
 	 					50.f,   //   R 
 	147.f,   					// L
 						111.f,  //   R
 	267.f,   					// L 
-	 					247.f,   // 	R
+	 					247.f,  // 	 R
 };
+
+static float gReverb = 0.f;
+static float gSizeLevelComp = 1.f;
 
 static float allpassTimes[numDelays]  // ms
 {
@@ -149,7 +152,8 @@ Bandpass  DSY_SDRAM_BSS bandPass[numDelays];
 
 enum eCtrsl
 {
-	eMix,
+	eDirect,
+	eReverb,
 	eTime,
 	eDiffusion,
 	eHiCut, 
@@ -192,12 +196,10 @@ void AudioCallback(float **in, float **out, size_t size)
 		float delayOut[numDelays];
 		float delayIn [numDelays];
 
-		float feedback = ctrl[eTime].Value();
+		float feedback = gReverb;
 		for(int o = 0; o < numDelays; ++o)
 			delayOut[o] = delayLine[o].Read() * feedback;
 		
-	
-
 		for(int k = 0; k < numDelays; ++k)
 		{		
 			float delayInput = 0.0f;
@@ -222,7 +224,8 @@ void AudioCallback(float **in, float **out, size_t size)
 			delayLine[o].Write(x);
 		}
 
-		float wet = ctrl[eMix].Value() * 2e-3f;
+		input    *= ctrl[eDirect].Value() * 1e-2f;
+		float wet = ctrl[eReverb].Value() * 2e-2f * gSizeLevelComp; 
 		out[0][i] = input + wet * (		delayOut[0] 
 																- delayOut[2]
 																+ delayOut[4]
@@ -289,6 +292,8 @@ void SetHighCut(float freq)
 {
 	float sampleRate = hw.AudioSampleRate();
 	float normFreq = freq / sampleRate;
+	if(freq >= 2e4f)
+		normFreq = 0.5f;
 	for(int i = 0; i < numDelays; ++i)
 		bandPass[i].SetHighCut(normFreq, -0.0f);
 }
@@ -297,8 +302,16 @@ void SetLowCut(float freq)
 {
 	float sampleRate = hw.AudioSampleRate();
 	float normFreq = freq / sampleRate;
+	if(freq <= 10.f)
+		normFreq = 0.0f;
 	for(int i = 0; i < numDelays; ++i)
 		bandPass[i].SetLowCut(normFreq);
+}
+
+void SetReverbTime(float rt60)
+{
+	const float T = 0.141 * ctrl[eSize].Value() * 1e-2f;
+	gReverb = powf(1e-3f, T / rt60);
 }
 
 void SetSize(float size)
@@ -307,9 +320,11 @@ void SetSize(float size)
 	size *= sampleRate * 1e-5f;  // [ms] * [%]
 	for(int i = 0; i < numDelays; ++i)
 	{
-		delayLine[i].SetDelay(size * delayTimes[i]);
+		delayLine[i].SetDelay(floorf(size * delayTimes[i]));
 		allpassFrames[i] = allpassTimes[i] * size;
 	}
+	SetReverbTime(ctrl[eTime].Value());
+	gSizeLevelComp = 0.1 * sqrtf(size);
 }
 
 void InitDelayNetwork()
@@ -349,22 +364,24 @@ int main(void)
 	// initialize controller
 
 	
-	ctrl[eMix				].Init("Mix", 		 "%", 0.f,  100.f, 100, eLinear, 		    50.f, 0);
-	ctrl[eTime			].Init("Time", 		 "?", 0.7,    1.f, 100, eLinear, 			  0.9f, 3);
+	ctrl[eDirect		].Init("Input", 	 "%", 0.f,  100.f, 100, eLinear, 		   100.f, 0);
+	ctrl[eReverb		].Init("Reverb", 	 "%", 0.f,  100.f, 100, eLinear, 		    20.f, 0);
+	ctrl[eTime			].Init("Time", 		 "s", 0.5,  100.f, 100, eLogarithmic, 	2.f,  1);
 	ctrl[eDiffusion	].Init("Diffusion","",  0.f,    1.0, 100, eLinear, 			  0.5f, 2);
 	ctrl[eHiCut			].Init("High Cut", "Hz",1e3f,  2e4f, 100, eLogarithmic,  12e3f, 0);
 	ctrl[eLoCut			].Init("Low Cut",  "Hz",10.f,  1e3f, 100, eLogarithmic,   20.f, 1);
-	ctrl[eSize			].Init("Size", 		 "%", 50.f, 200.f, 100, eLogarithmic,  100.f, 1);
-	ctrl[eMatrix		].Init("Matrix", 	 "", 0.f,    8.f,  160, eLinear,  			7.f,  2);
+	ctrl[eSize			].Init("Size", 		 "%", 20.f, 200.f, 100, eLogarithmic,  100.f, 1);
+	ctrl[eMatrix		].Init("Matrix", 	 "", 0.f,     8.f,   8, eLinear,  			7.f,  2);
 
 	MenuCtrl.Init					("Selection", "",  0.f, eNumControls -1, eNumControls, eLinear,  0.f, 0);
 
-	ctrl[eHiCut].SetUpdateCallback(SetHighCut);
-	ctrl[eLoCut].SetUpdateCallback(SetLowCut);
-  ctrl[eSize ].SetUpdateCallback(SetSize);
+	ctrl[eTime	].SetUpdateCallback(SetReverbTime);
+	ctrl[eHiCut ].SetUpdateCallback(SetHighCut);
+	ctrl[eLoCut ].SetUpdateCallback(SetLowCut);
+  ctrl[eSize  ].SetUpdateCallback(SetSize);
 	ctrl[eMatrix].SetUpdateCallback(SetMatrix);
 
-InitDelayNetwork();
+	InitDelayNetwork();
 
 	hw.StartAdc();
 	hw.StartAudio(AudioCallback);
