@@ -97,11 +97,24 @@ Controller::ValueString(std::string& str)
   int preDecimals = (int) _value;
   int decimals  = (_value - preDecimals) * powf(10.f, _numDecimals);
 
-  //string = "*****";
-  //sprintf(string, "%2.3f"/*_pFormat*/, _value);
   str = std::to_string(preDecimals);
+
+  if(_numDecimals == 0)
+    goto ADD_UNIT;
+
   str += ".";
+
+  for(int i = _numDecimals - 1 ; i > 0 ; --i)
+  {
+    float cmp = powf(10.f, i);
+    if(decimals < cmp)
+      str +="0";
+    else
+      break;
+  }
+
   str += std::to_string(decimals);
+  ADD_UNIT:
   str += " ";
   str += _pUnit;
 
