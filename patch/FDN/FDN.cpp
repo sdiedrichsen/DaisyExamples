@@ -1,9 +1,21 @@
+/**
+ * @file FDN.cpp
+ * @author Steffan Diedrichsen (sdiedrichsen@mac.com)
+ * @brief 
+ * @version 0.1
+ * @date 2021-03-31
+ * 
+ * @copyright Copyright (c) 2021
+ * 
+ */
+
 #include "daisy_patch.h"
 #include "daisysp.h"
 
 #include "Bandpass.h"
 #include "Controller.h"
 #include <string>
+#include <algorithm>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846f /* pi */
@@ -104,18 +116,18 @@ static float allFDNMatrices[9][numDelays][numDelays] =
   {-0.197008089298341,  -0.049248999439014,  -0.349053521580636,  -0.616632558782249,  0.153451689901756,  0.362734998551988,  -0.055389841986459,  -0.546348003037977}},
 }; 
 
-static float DSY_SDRAM_BSS fdnMatrix[numDelays][numDelays];
+static float  __attribute__((section(".dtcmram_bss"))) fdnMatrix[numDelays][numDelays];
 
 static float delayTimes[numDelays]  // ms
 {
-	 19.f,   // L  
-	 17.f,   // 	R
-	 23.f,   // L 
-	 50.f,   //   R 
-	147.f,   // L
-	111.f,   //   R
-	 73.f,   // L 
-	 47.f,   // 	R
+	 16.5f,   					// L  
+	 					17.f,   // 	R
+	 53.f,   					// L 
+	 					50.f,   //   R 
+	147.f,   					// L
+						111.f,  //   R
+	267.f,   					// L 
+	 					247.f,   // 	R
 };
 
 static float allpassTimes[numDelays]  // ms
@@ -143,6 +155,7 @@ enum eCtrsl
 	eHiCut, 
 	eLoCut,
 	eSize,
+	eMatrix,
 	eNumControls
 };
 
@@ -211,12 +224,12 @@ void AudioCallback(float **in, float **out, size_t size)
 
 		float wet = ctrl[eMix].Value() * 2e-3f;
 		out[0][i] = input + wet * (		delayOut[0] 
-																+ delayOut[2]
+																- delayOut[2]
 																+ delayOut[4]
-																+ delayOut[6]);
-		out[1][i] = input + wet * (		delayOut[1] 
+																- delayOut[6]);
+		out[1][i] = input + wet * (	-	delayOut[1] 
 																+ delayOut[3]
-																+ delayOut[5]
+																- delayOut[5]
 																+ delayOut[7]);
 	}
 }
@@ -254,28 +267,21 @@ void UpdateDisplay()
 	hw.display.Update();
 }
 
-void InitDelayNetwork()
+void SetMatrix(float a)
 {
+	int b = a;
+	int c = a + 1;
+  
+	b = b < 0 ? 0 : b > 8? 8 : b;
+	c = c < 0 ? 0 : c > 8? 8 : c;
 
+	float fraction = a - b;
+	float oneMinusFrac = 1. - fraction; 
 	for(int j = 0; j < numDelays; ++j)
 	{
 		for(int k = 0; k < numDelays; ++k)
-			fdnMatrix[j][k] = allFDNMatrices[2][j][k];
-	}
-
-	float sampleRate = hw.AudioSampleRate();
-	for(int i = 0; i < numDelays; ++i)
-	{
-		delayLine[i].Init();
-		delayLine[i].SetDelay(sampleRate * 1e-3f * delayTimes[i]);
-
-		allpass[i].Init();
-		allpassFrames[i] = allpassTimes[i] * 1e-3f * sampleRate;
-
-		bandPass[i].Init();
-		bandPass[i].SetHighCut(12e3f / sampleRate, -0.0f);
-		bandPass[i].SetLowCut(20.f / sampleRate);
-
+			fdnMatrix[j][k] =  allFDNMatrices[b][j][k] * oneMinusFrac
+											 + allFDNMatrices[c][j][k] * fraction;
 	}
 }
 
@@ -300,7 +306,35 @@ void SetSize(float size)
 	float sampleRate = hw.AudioSampleRate();
 	size *= sampleRate * 1e-5f;  // [ms] * [%]
 	for(int i = 0; i < numDelays; ++i)
+	{
 		delayLine[i].SetDelay(size * delayTimes[i]);
+		allpassFrames[i] = allpassTimes[i] * size;
+	}
+}
+
+void InitDelayNetwork()
+{
+
+	for(int j = 0; j < numDelays; ++j)
+	{
+		for(int k = 0; k < numDelays; ++k)
+			fdnMatrix[j][k] = allFDNMatrices[2][j][k];
+	}
+
+	float sampleRate = hw.AudioSampleRate();
+
+	for(int i = 0; i < numDelays; ++i)
+	{
+		delayLine[i].Init();
+		delayLine[i].SetDelay(sampleRate * 1e-3f * delayTimes[i]);
+
+		allpass[i].Init();
+		bandPass[i].Init();
+	}
+	SetSize		(ctrl[eSize].Value());
+	SetMatrix (ctrl[eMatrix].Value());
+	SetHighCut(ctrl[eHiCut].Value());
+	SetLowCut (ctrl[eLoCut].Value());
 }
 
 
@@ -310,23 +344,27 @@ int main(void)
 
 	// initialize delays
 
-	InitDelayNetwork();
-
+	
 
 	// initialize controller
 
 	
 	ctrl[eMix				].Init("Mix", 		 "%", 0.f,  100.f, 100, eLinear, 		    50.f, 0);
-	ctrl[eTime			].Init("Time", 		 "?", 0.7,    1.f, 200, eLinear, 			  0.9f, 3);
+	ctrl[eTime			].Init("Time", 		 "?", 0.7,    1.f, 100, eLinear, 			  0.9f, 3);
 	ctrl[eDiffusion	].Init("Diffusion","",  0.f,    1.0, 100, eLinear, 			  0.5f, 2);
 	ctrl[eHiCut			].Init("High Cut", "Hz",1e3f,  2e4f, 100, eLogarithmic,  12e3f, 0);
 	ctrl[eLoCut			].Init("Low Cut",  "Hz",10.f,  1e3f, 100, eLogarithmic,   20.f, 1);
 	ctrl[eSize			].Init("Size", 		 "%", 50.f, 200.f, 100, eLogarithmic,  100.f, 1);
+	ctrl[eMatrix		].Init("Matrix", 	 "", 0.f,    8.f,  160, eLinear,  			7.f,  2);
+
 	MenuCtrl.Init					("Selection", "",  0.f, eNumControls -1, eNumControls, eLinear,  0.f, 0);
 
 	ctrl[eHiCut].SetUpdateCallback(SetHighCut);
 	ctrl[eLoCut].SetUpdateCallback(SetLowCut);
   ctrl[eSize ].SetUpdateCallback(SetSize);
+	ctrl[eMatrix].SetUpdateCallback(SetMatrix);
+
+InitDelayNetwork();
 
 	hw.StartAdc();
 	hw.StartAudio(AudioCallback);
