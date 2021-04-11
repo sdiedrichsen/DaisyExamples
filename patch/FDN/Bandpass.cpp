@@ -32,8 +32,13 @@ void Bandpass::SetHighCut(float normFreq, float gainHighShelf)
 }
 
 void Bandpass::SetLowCut(float normFreq)
-{
-  float	arg	=	float(M_PI * normFreq);			
-  float	l		=	float(cosf(arg) / sinf(arg));
-  _d0HP		  =	1.f / (1.f + l);              
+{ 
+  if(normFreq == 0.f)
+    _d0HP = 0.f;
+  else
+  {
+    float	arg	=	float(M_PI * normFreq);			
+    float	l		=	float(cosf(arg) / sinf(arg));
+    _d0HP		  =	1.f / (1.f + l);              
+  }
 }
