@@ -13,28 +13,28 @@
 
 struct Bandpass
 {
-	float _lpHist;
-	float _hpHist;
-	float _d0LP;
-	float _d0HP;
-	float _gainHS;
+    float _lpHist;
+    float _hpHist;
+    float _d0LP;
+    float _d0HP;
+    float _gainHS;
 
-	void Init();
+    void Init();
 
-  /**
+    /**
    * @brief Process processes
    * 
    * @param in      input sample
    * @return float  filtered output sample
    */
-	float Process(const float in);
-	
-  /**
+    float Process(const float in);
+
+    /**
    * @brief Set High Cutoff 
    * 
    * @param normFreq    normalized cutoff frequency 0...0.5 
    * @param gainHighShelf non functional, provide 0.f
    */
-	void SetHighCut(float normFreq, float gainHighShelf);
-	void SetLowCut(float normFreq);
+    void SetHighCut(float normFreq, float gainHighShelf);
+    void SetLowCut(float normFreq);
 };

@@ -21,8 +21,8 @@ int main(void)
 
     // Loop forever
 
-    int waitTimes[9] = {100,100,100,500,500,500,100,100,100};
-    int idx = 0;
+    int waitTimes[9] = {100, 100, 100, 500, 500, 500, 100, 100, 100};
+    int idx          = 0;
     for(;;)
     {
         // Set the onboard LED
@@ -33,7 +33,6 @@ int main(void)
 
         // Wait 500ms
         System::Delay(waitTimes[idx++]);
-        idx %= 9; 
-        
+        idx %= 9;
     }
 }
